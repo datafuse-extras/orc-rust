@@ -187,10 +187,16 @@ impl Stripe {
     ) -> Result<Self> {
         let compression = file_metadata.compression();
 
-        let footer = reader
-            .get_bytes(info.footer_offset(), info.footer_length())
+        let stripe_data = reader
+            .get_bytes(
+                info.offset(),
+                info.data_length() + info.index_length() + info.footer_length(),
+            )
             .await
             .context(IoSnafu)?;
+        let start = (info.footer_offset() - info.offset()) as usize;
+        let end = start + info.footer_length() as usize;
+        let footer = stripe_data.slice(start..end);
         let footer = Arc::new(deserialize_stripe_footer(footer, compression)?);
 
         let columns: Vec<Column> = projected_data_type
@@ -201,17 +207,18 @@ impl Stripe {
         let column_ids = collect_required_column_ids(&columns);
 
         let mut stream_map = HashMap::new();
-        let mut stream_offset = info.offset();
+        let mut stream_offset = 0;
         for stream in &footer.streams {
             let length = stream.length();
             let column_id = stream.column();
+            let start = stream_offset;
+            let end = start + length as usize;
             if column_ids.contains(&column_id) {
                 let kind = stream.kind();
-                let data = Column::read_stream_async(reader, stream_offset, length).await?;
+                let data = stripe_data.slice(start..end);
                 stream_map.insert((column_id, kind), data);
             }
-
-            stream_offset += length;
+            stream_offset = end;
         }
 
         let tz: Option<chrono_tz::Tz> = footer
