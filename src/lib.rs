@@ -15,6 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+#![allow(dead_code)]
+
 //! A native Rust implementation of the [Apache ORC](https://orc.apache.org) file format,
 //! providing API's to read data into [Apache Arrow](https://arrow.apache.org) in-memory arrays.
 //!
